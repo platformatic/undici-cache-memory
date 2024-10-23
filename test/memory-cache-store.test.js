@@ -115,6 +115,7 @@ function cacheStoreTests (CacheStore) {
       deepStrictEqual(await readResponse(readStream), {
         ...anotherValue,
         body: anotherBody,
+        cacheTags: [],
         rawTrailers: anotherTrailers
       })
     })

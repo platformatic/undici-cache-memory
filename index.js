@@ -110,7 +110,10 @@ class MemoryCacheStore {
       return undefined
     }
 
-    this.#saveCacheTags(req, opts.rawHeaders)
+    const cacheTags = this.#parseCacheTags(opts.rawHeaders)
+    this.#saveCacheTags(req, cacheTags)
+
+    opts.cacheTags = cacheTags
 
     const values = this.#getValuesForRequest(req, true)
 
@@ -208,7 +211,29 @@ class MemoryCacheStore {
     this.#tags.delete(origin)
   }
 
-  async deleteByCacheTags (origin, cacheTags) {
+  deleteRoutes (routes) {
+    for (const { method, url } of routes) {
+      const { origin, pathname, search, hash } = new URL(url)
+
+      const originRoutes = this.#data.get(origin)
+      if (!originRoutes) continue
+
+      const cacheKey = `${pathname}${search}${hash}:${method}`
+      const cacheValues = originRoutes.get(cacheKey)
+      if (!cacheValues || cacheValues.length === 0) continue
+
+      for (const cacheValue of cacheValues) {
+        const cacheTags = cacheValue.opts.cacheTags
+        if (cacheTags && cacheTags.length > 0) {
+          this.#unlinkRouteFromCacheTag(origin, cacheTags, cacheKey)
+        }
+      }
+
+      originRoutes.delete(cacheKey)
+    }
+  }
+
+  deleteByCacheTags (origin, cacheTags) {
     const originTags = this.#tags.get(origin)
     if (!originTags) return
 
@@ -280,8 +305,7 @@ class MemoryCacheStore {
     return values
   }
 
-  #saveCacheTags (req, rawHeaders) {
-    const cacheTags = this.#parseCacheTags(rawHeaders)
+  #saveCacheTags (req, cacheTags) {
     if (cacheTags.length === 0) return
 
     let originTags = this.#tags.get(req.origin)
