@@ -1,3 +1,26 @@
+/*
+Copyright Platformatic. All rights reserved.
+Copyright (c) Matteo Collina and Undici contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+*/
+
 'use strict'
 
 const { Writable, Readable } = require('node:stream')
@@ -6,8 +29,10 @@ class MemoryCacheStore {
   #maxEntries = Infinity
   #maxEntrySize = Infinity
   #errorCallback = undefined
+  #cacheTagHeader = undefined
   #entryCount = 0
   #data = new Map()
+  #tags = new Map()
 
   constructor (opts) {
     if (opts) {
@@ -42,6 +67,10 @@ class MemoryCacheStore {
           throw new TypeError('MemoryCacheStore options.errorCallback must be a function')
         }
         this.#errorCallback = opts.errorCallback
+      }
+
+      if (typeof opts.cacheTagHeader === 'string') {
+        this.#cacheTagHeader = opts.cacheTagHeader.toLowerCase()
       }
     }
   }
@@ -80,6 +109,8 @@ class MemoryCacheStore {
     if (this.isFull) {
       return undefined
     }
+
+    this.#saveCacheTags(req, opts.rawHeaders)
 
     const values = this.#getValuesForRequest(req, true)
 
@@ -174,6 +205,58 @@ class MemoryCacheStore {
 
   deleteByOrigin (origin) {
     this.#data.delete(origin)
+    this.#tags.delete(origin)
+  }
+
+  async deleteByCacheTags (origin, cacheTags) {
+    const originTags = this.#tags.get(origin)
+    if (!originTags) return
+
+    const originRoutes = this.#data.get(origin)
+    if (!originRoutes) return
+
+    for (const cacheTag of cacheTags) {
+      const cacheKeys = originTags.get(cacheTag)
+      if (!cacheKeys) continue
+
+      for (const cacheKey of cacheKeys) {
+        originRoutes.delete(cacheKey)
+      }
+
+      originTags.delete(cacheTag)
+    }
+  }
+
+  #parseCacheTags (rawHeaders) {
+    if (!this.#cacheTagHeader) {
+      return []
+    }
+
+    for (let i = 0; i < rawHeaders.length; i += 2) {
+      const headerName = rawHeaders[i].toString().toLowerCase()
+      if (headerName !== this.#cacheTagHeader) continue
+
+      const headerValue = rawHeaders[i + 1].toString()
+      return headerValue.split(',')
+    }
+
+    return []
+  }
+
+  #unlinkRouteFromCacheTag (origin, cacheTags, cacheKey) {
+    const originTags = this.#tags.get(origin)
+    if (!originTags) return
+
+    for (const cacheTag of cacheTags) {
+      const cacheKeys = originTags.get(cacheTag)
+      if (!cacheKeys) continue
+
+      cacheKeys.delete(cacheKey)
+
+      if (cacheKeys.size === 0) {
+        originTags.delete(cacheTag)
+      }
+    }
   }
 
   #getValuesForRequest (req, makeIfDoesntExist) {
@@ -197,6 +280,26 @@ class MemoryCacheStore {
     return values
   }
 
+  #saveCacheTags (req, rawHeaders) {
+    const cacheTags = this.#parseCacheTags(rawHeaders)
+    if (cacheTags.length === 0) return
+
+    let originTags = this.#tags.get(req.origin)
+    if (!originTags) {
+      originTags = new Map()
+      this.#tags.set(req.origin, originTags)
+    }
+
+    for (const cacheTag of cacheTags) {
+      let tagPaths = originTags.get(cacheTag)
+      if (!tagPaths) {
+        tagPaths = new Set()
+        originTags.set(cacheTag, tagPaths)
+      }
+      tagPaths.add(`${req.path}:${req.method}`)
+    }
+  }
+
   #findValue (req, values) {
     /**
      * @type {MemoryStoreValue}
@@ -207,6 +310,12 @@ class MemoryCacheStore {
       const current = values[i]
       const currentCacheValue = current.opts
       if (now >= currentCacheValue.deleteAt) {
+        const cacheTags = currentCacheValue.cacheTags
+        if (cacheTags) {
+          const cacheKey = `${req.path}:${req.method}`
+          this.#unlinkRouteFromCacheTag(req.origin, cacheTags, cacheKey)
+        }
+
         // We've reached expired values, let's delete them
         this.#entryCount -= values.length - i
         values.length = i
