@@ -1,0 +1,11 @@
+{
+  "name": "undici-cache-memory",
+  "version": "0.0.1",
+  "description": "Memory cache store for the undici cache interceptor",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Platformatic Inc. <oss@platformatic.dev> (https://platformatic.dev)",
+  "license": "Apache-2.0"
+}
