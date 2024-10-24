@@ -79,19 +79,20 @@ class MemoryCacheStore {
     return this.#entryCount >= this.#maxEntries
   }
 
-  getOrigins () {
-    return Array.from(this.#data.keys())
-  }
-
-  getRoutesByOrigin (origin) {
-    const paths = this.#data.get(origin)
-    if (!paths) return []
-
+  getRoutes () {
     const cachedRoutes = []
-    for (const cachedValue of paths.keys()) {
-      const [path, method] = cachedValue.split(':')
-      cachedRoutes.push({ method, path })
+
+    for (const origin of this.#data.keys()) {
+      const originPaths = this.#data.get(origin)
+      if (!originPaths) continue
+  
+      for (const cachedValue of originPaths.keys()) {
+        const [path, method] = cachedValue.split(':')
+        const url = new URL(path, origin).href
+        cachedRoutes.push({ method, url })
+      }
     }
+
     return cachedRoutes
   }
 
