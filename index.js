@@ -29,7 +29,7 @@ class MemoryCacheStore {
   #maxEntries = Infinity
   #maxEntrySize = Infinity
   #errorCallback = undefined
-  #cacheTagHeader = undefined
+  #cacheTagsHeader = undefined
   #entryCount = 0
   #data = new Map()
   #tags = new Map()
@@ -69,8 +69,8 @@ class MemoryCacheStore {
         this.#errorCallback = opts.errorCallback
       }
 
-      if (typeof opts.cacheTagHeader === 'string') {
-        this.#cacheTagHeader = opts.cacheTagHeader.toLowerCase()
+      if (typeof opts.cacheTagsHeader === 'string') {
+        this.#cacheTagsHeader = opts.cacheTagsHeader.toLowerCase()
       }
     }
   }
@@ -211,14 +211,12 @@ class MemoryCacheStore {
     this.#tags.delete(origin)
   }
 
-  deleteRoutes (routes) {
-    for (const { method, url } of routes) {
-      const { origin, pathname, search, hash } = new URL(url)
+  deleteRoutes (origin, routes) {
+    const originRoutes = this.#data.get(origin)
+    if (!originRoutes) return
 
-      const originRoutes = this.#data.get(origin)
-      if (!originRoutes) continue
-
-      const cacheKey = `${pathname}${search}${hash}:${method}`
+    for (const { method, path } of routes) {
+      const cacheKey = `${path}:${method}`
       const cacheValues = originRoutes.get(cacheKey)
       if (!cacheValues || cacheValues.length === 0) continue
 
@@ -253,13 +251,13 @@ class MemoryCacheStore {
   }
 
   #parseCacheTags (rawHeaders) {
-    if (!this.#cacheTagHeader) {
+    if (!this.#cacheTagsHeader) {
       return []
     }
 
     for (let i = 0; i < rawHeaders.length; i += 2) {
       const headerName = rawHeaders[i].toString().toLowerCase()
-      if (headerName !== this.#cacheTagHeader) continue
+      if (headerName !== this.#cacheTagsHeader) continue
 
       const headerValue = rawHeaders[i + 1].toString()
       return headerValue.split(',')

@@ -89,7 +89,7 @@ describe('Cache Interceptor', () => {
     await once(server, 'listening')
 
     const cacheStore = new MemoryCacheStore({
-      cacheTagHeader: 'cache-tag'
+      cacheTagsHeader: 'cache-tag'
     })
   
     const client = new Client(`http://localhost:${server.address().port}`)
