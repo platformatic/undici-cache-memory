@@ -1,6 +1,6 @@
 {
-  "name": "undici-cache-memory",
-  "version": "0.0.1",
+  "name": "@platformatic/undici-cache-memory",
+  "version": "0.1.0",
   "description": "Memory cache store for the undici cache interceptor",
   "main": "index.js",
   "scripts": {
@@ -10,6 +10,6 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "borp": "^0.18.0",
-    "undici": "nodejs/undici#main"
+    "undici": "7.0.0-alpha.3"
   }
 }
