@@ -235,7 +235,7 @@ function cacheStoreTests (CacheStore) {
 
   test('returns cached values', async () => {
     const request = {
-      origin: 'test-origin-1',
+      origin: 'http://test-origin-1',
       path: '/foo?bar=baz',
       method: 'GET',
       headers: {}
@@ -258,12 +258,14 @@ function cacheStoreTests (CacheStore) {
     let writeStream = store.createWriteStream(request, requestValue)
     writeResponse(writeStream, [], [])
 
-    let cachedOrigins = await store.getOrigins()
-    deepStrictEqual(cachedOrigins, ['test-origin-1'])
+    let cachedRoutes = await store.getRoutes()
+    deepStrictEqual(cachedRoutes, [
+      { method: 'GET', url: 'http://test-origin-1/foo?bar=baz'}
+    ])
 
     // Now let's write another request to the store
     const anotherRequest = {
-      origin: 'test-origin-2',
+      origin: 'http://test-origin-2',
       path: '/asd',
       method: 'GET',
       headers: {}
@@ -284,14 +286,11 @@ function cacheStoreTests (CacheStore) {
     })
     writeResponse(writeStream, [], [])
 
-    cachedOrigins = await store.getOrigins()
-    deepStrictEqual(cachedOrigins, ['test-origin-1', 'test-origin-2'])
-
-    let cachedPaths = await store.getRoutesByOrigin('test-origin-1')
-    deepStrictEqual(cachedPaths, [{ method: 'GET', path: '/foo?bar=baz' }])
-
-    cachedPaths = await store.getRoutesByOrigin('test-origin-2')
-    deepStrictEqual(cachedPaths, [{ method: 'GET', path: '/asd' }])
+    cachedRoutes = await store.getRoutes()
+    deepStrictEqual(cachedRoutes, [
+      { method: 'GET', url: 'http://test-origin-1/foo?bar=baz'},
+      { method: 'GET', url: 'http://test-origin-2/asd'}
+    ])
   })
 }
 
