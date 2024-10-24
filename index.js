@@ -79,6 +79,22 @@ class MemoryCacheStore {
     return this.#entryCount >= this.#maxEntries
   }
 
+  getOrigins () {
+    return Array.from(this.#data.keys())
+  }
+
+  getRoutesByOrigin (origin) {
+    const paths = this.#data.get(origin)
+    if (!paths) return []
+
+    const cachedRoutes = []
+    for (const cachedValue of paths.keys()) {
+      const [path, method] = cachedValue.split(':')
+      cachedRoutes.push({ method, path })
+    }
+    return cachedRoutes
+  }
+
   createReadStream (req) {
     if (typeof req !== 'object') {
       throw new TypeError(`expected req to be object, got ${typeof req}`)
