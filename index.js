@@ -228,13 +228,17 @@ class MemoryCacheStore {
     this.#tags.delete(origin)
   }
 
-  deleteRoutes (origin, routes) {
-    const originRoutes = this.#data.get(origin)
-    if (!originRoutes) return
-
-    for (const { method, path } of routes) {
+  deleteRoutes (routes) {
+    for (const { method, url } of routes) {
+      const { origin, pathname, search, hash } = new URL(url)
+      
+      const originRoutes = this.#data.get(origin)
+      if (!originRoutes) continue
+      
+      const path = `${pathname}${search}${hash}`
       const cacheKey = `${path}:${method}`
       const cacheValues = originRoutes.get(cacheKey)
+
       if (!cacheValues || cacheValues.length === 0) continue
 
       for (const cacheValue of cacheValues) {
