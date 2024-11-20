@@ -219,6 +219,12 @@ class MemoryCacheStore {
         const pathValues = originValues.get(path)
         if (!pathValues) continue
 
+        const entries = pathValues.get(method)
+        if (!entries) continue
+
+        for (const entry of entries) {
+          this.#deleteEntry({ origin, path, method }, entry)
+        }
         pathValues.delete(method)
 
         if (pathValues.size === 0) {
