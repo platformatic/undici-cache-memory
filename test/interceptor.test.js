@@ -116,7 +116,7 @@ describe('Cache Interceptor', () => {
     strictEqual(await response.body.text(), 'asd')
     strictEqual(response.headers.age, '0')
 
-    await cacheStore.deleteByCacheTags('localhost', [cacheTag])
+    cacheStore.deleteByCacheTags('localhost', [cacheTag])
 
     // Send third request that should reach the origin again
     response = await client.request({
