@@ -25,6 +25,7 @@ IN THE SOFTWARE.
 
 const { describe, test } = require('node:test')
 const { deepStrictEqual, notEqual, equal } = require('node:assert')
+const { Readable } = require('node:stream')
 const { once } = require('node:events')
 const MemoryCacheStore = require('../index.js')
 
@@ -34,10 +35,9 @@ function cacheStoreTests (CacheStore) {
   describe(CacheStore.prototype.constructor.name, () => {
     test('matches interface', async () => {
       const store = new CacheStore()
-      equal(typeof store.isFull, 'boolean')
-      equal(typeof store.createReadStream, 'function')
+      equal(typeof store.get, 'function')
       equal(typeof store.createWriteStream, 'function')
-      equal(typeof store.deleteByOrigin, 'function')
+      equal(typeof store.delete, 'function')
       equal(typeof store.deleteByCacheTags, 'function')
     })
 
@@ -58,26 +58,26 @@ function cacheStoreTests (CacheStore) {
         deleteAt: Date.now() + 20000
       }
       const requestBody = ['asd', '123']
-      const requestTrailers = ['a', 'b', 'c']
 
       const store = new CacheStore()
 
       // Sanity check
-      equal(store.createReadStream(request), undefined)
+      equal(store.get(request), undefined)
 
       // Write the response to the store
       let writeStream = store.createWriteStream(request, requestValue)
       notEqual(writeStream, undefined)
-      writeResponse(writeStream, requestBody, requestTrailers)
+      writeResponse(writeStream, requestBody)
 
       // Now try fetching it with a deep copy of the original request
-      let readStream = store.createReadStream(structuredClone(request))
-      notEqual(readStream, undefined)
+      let readResult = store.get(structuredClone(request))
+      notEqual(readResult, undefined)
 
-      deepStrictEqual(await readResponse(readStream), {
+      deepStrictEqual(await readResponse(readResult), {
         ...requestValue,
-        body: requestBody,
-        rawTrailers: requestTrailers
+        etag: undefined,
+        cacheTags: [],
+        body: requestBody
       })
 
       // Now let's write another request to the store
@@ -96,11 +96,10 @@ function cacheStoreTests (CacheStore) {
         deleteAt: Date.now() + 20000
       }
       const anotherBody = ['asd2', '1234']
-      const anotherTrailers = ['d', 'e', 'f']
 
       // We haven't cached this one yet, make sure it doesn't confuse it with
       //  another request
-      equal(store.createReadStream(anotherRequest), undefined)
+      equal(store.get(anotherRequest), undefined)
 
       // Now let's cache it
       writeStream = store.createWriteStream(anotherRequest, {
@@ -108,15 +107,15 @@ function cacheStoreTests (CacheStore) {
         body: []
       })
       notEqual(writeStream, undefined)
-      writeResponse(writeStream, anotherBody, anotherTrailers)
+      writeResponse(writeStream, anotherBody)
 
-      readStream = store.createReadStream(anotherRequest)
-      notEqual(readStream, undefined)
-      deepStrictEqual(await readResponse(readStream), {
+      readResult = store.get(anotherRequest)
+      notEqual(readResult, undefined)
+      deepStrictEqual(await readResponse(readResult), {
         ...anotherValue,
+        etag: undefined,
         body: anotherBody,
-        cacheTags: [],
-        rawTrailers: anotherTrailers
+        cacheTags: []
       })
     })
 
@@ -136,19 +135,19 @@ function cacheStoreTests (CacheStore) {
         deleteAt: Date.now() + 20000
       }
       const requestBody = ['part1', 'part2']
-      const requestTrailers = [4, 5, 6]
 
       const store = new CacheStore()
 
       const writeStream = store.createWriteStream(request, requestValue)
       notEqual(writeStream, undefined)
-      writeResponse(writeStream, requestBody, requestTrailers)
+      writeResponse(writeStream, requestBody)
 
-      const readStream = store.createReadStream(request)
-      deepStrictEqual(await readResponse(readStream), {
+      const readResult = store.get(request)
+      deepStrictEqual(await readResponse(readResult), {
         ...requestValue,
-        body: requestBody,
-        rawTrailers: requestTrailers
+        etag: undefined,
+        cacheTags: [],
+        body: requestBody
       })
     })
 
@@ -167,15 +166,14 @@ function cacheStoreTests (CacheStore) {
         deleteAt: Date.now() - 5
       }
       const requestBody = ['part1', 'part2']
-      const rawTrailers = ['4', '5', '6']
 
       const store = new CacheStore()
 
       const writeStream = store.createWriteStream(request, requestValue)
       notEqual(writeStream, undefined)
-      writeResponse(writeStream, requestBody, rawTrailers)
+      writeResponse(writeStream, requestBody)
 
-      equal(store.createReadStream(request), undefined)
+      equal(store.get(request), undefined)
     })
 
     test('respects vary directives', async () => {
@@ -199,7 +197,6 @@ function cacheStoreTests (CacheStore) {
         deleteAt: Date.now() + 20000
       }
       const requestBody = ['part1', 'part2']
-      const requestTrailers = ['4', '5', '6']
 
       /**
        * @type {import('../../types/cache-interceptor.d.ts').default.CacheStore}
@@ -207,18 +204,20 @@ function cacheStoreTests (CacheStore) {
       const store = new CacheStore()
 
       // Sanity check
-      equal(store.createReadStream(request), undefined)
+      equal(store.get(request), undefined)
 
       const writeStream = store.createWriteStream(request, requestValue)
       notEqual(writeStream, undefined)
-      writeResponse(writeStream, requestBody, requestTrailers)
+      writeResponse(writeStream, requestBody)
 
-      const readStream = store.createReadStream(structuredClone(request))
+      const readStream = store.get(structuredClone(request))
       notEqual(readStream, undefined)
+      const { vary, ...responseValue } = requestValue
       deepStrictEqual(await readResponse(readStream), {
-        ...requestValue,
-        body: requestBody,
-        rawTrailers: requestTrailers
+        ...responseValue,
+        etag: undefined,
+        cacheTags: [],
+        body: requestBody
       })
 
       const nonMatchingRequest = {
@@ -229,7 +228,7 @@ function cacheStoreTests (CacheStore) {
           'some-header': 'another-value'
         }
       }
-      equal(store.createReadStream(nonMatchingRequest), undefined)
+      equal(store.get(nonMatchingRequest), undefined)
     })
   })
 
@@ -294,57 +293,20 @@ function cacheStoreTests (CacheStore) {
   })
 }
 
-test('MemoryCacheStore locks values properly', async () => {
-  const store = new MemoryCacheStore()
-
-  const request = {
-    origin: 'localhost',
-    path: '/',
-    method: 'GET',
-    headers: {}
-  }
-
-  const requestValue = {
-    statusCode: 200,
-    statusMessage: '',
-    rawHeaders: [Buffer.from('1'), Buffer.from('2'), Buffer.from('3')],
-    cachedAt: Date.now(),
-    staleAt: Date.now() + 10000,
-    deleteAt: Date.now() + 20000
-  }
-
-  const writable = store.createWriteStream(request, requestValue)
-  notEqual(writable, undefined)
-
-  // Value should now be locked, we shouldn't be able to create a readable or
-  //  another writable to it until the first one finishes
-  equal(store.createReadStream(request), undefined)
-  equal(store.createWriteStream(request, requestValue), undefined)
-
-  // Close the writable, this should unlock it
-  writeResponse(writable, ['asd'], [])
-
-  // Stream is now closed, let's lock any new write streams
-  const readable = store.createReadStream(request)
-  notEqual(readable, undefined)
-  equal(store.createWriteStream(request, requestValue), undefined)
-
-  // Consume & close the readable, this should lift the write lock
-  await readResponse(readable)
-
-  notEqual(store.createWriteStream(request, requestValue), undefined)
-})
-
-function writeResponse (stream, body, trailers) {
+function writeResponse (stream, body) {
   for (const chunk of body) {
     stream.write(Buffer.from(chunk))
   }
 
-  stream.rawTrailers = trailers
   stream.end()
 }
 
-async function readResponse (stream) {
+async function readResponse ({ body: src, ...response }) {
+  notEqual(response, undefined)
+  notEqual(src, undefined)
+
+  const stream = Readable.from(src ?? [])
+
   const body = []
   stream.on('data', chunk => {
     body.push(chunk.toString())
@@ -353,7 +315,7 @@ async function readResponse (stream) {
   await once(stream, 'end')
 
   return {
-    ...stream.value,
+    ...response,
     body
   }
 }

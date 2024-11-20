@@ -23,15 +23,17 @@ IN THE SOFTWARE.
 
 'use strict'
 
-const { Writable, Readable } = require('node:stream')
+const { Writable } = require('node:stream')
 
 class MemoryCacheStore {
-  #maxEntries = Infinity
+  #maxCount = Infinity
+  #maxSize = Infinity
   #maxEntrySize = Infinity
-  #errorCallback = undefined
   #cacheTagsHeader = undefined
-  #entryCount = 0
-  #data = new Map()
+
+  #size = 0
+  #count = 0
+  #entries = new Map()
   #tags = new Map()
 
   constructor (opts) {
@@ -40,15 +42,26 @@ class MemoryCacheStore {
         throw new TypeError('MemoryCacheStore options must be an object')
       }
 
-      if (opts.maxEntries !== undefined) {
+      if (opts.maxCount !== undefined) {
         if (
-          typeof opts.maxEntries !== 'number' ||
-          !Number.isInteger(opts.maxEntries) ||
-          opts.maxEntries < 0
+          typeof opts.maxCount !== 'number' ||
+          !Number.isInteger(opts.maxCount) ||
+          opts.maxCount < 0
         ) {
-          throw new TypeError('MemoryCacheStore options.maxEntries must be a non-negative integer')
+          throw new TypeError('MemoryCacheStore options.maxCount must be a non-negative integer')
         }
-        this.#maxEntries = opts.maxEntries
+        this.#maxCount = opts.maxCount
+      }
+
+      if (opts.maxSize !== undefined) {
+        if (
+          typeof opts.maxSize !== 'number' ||
+          !Number.isInteger(opts.maxSize) ||
+          opts.maxSize < 0
+        ) {
+          throw new TypeError('MemoryCacheStore options.maxSize must be a non-negative integer')
+        }
+        this.#maxSize = opts.maxSize
       }
 
       if (opts.maxEntrySize !== undefined) {
@@ -62,193 +75,118 @@ class MemoryCacheStore {
         this.#maxEntrySize = opts.maxEntrySize
       }
 
-      if (opts.errorCallback !== undefined) {
-        if (typeof opts.errorCallback !== 'function') {
-          throw new TypeError('MemoryCacheStore options.errorCallback must be a function')
-        }
-        this.#errorCallback = opts.errorCallback
-      }
-
       if (typeof opts.cacheTagsHeader === 'string') {
         this.#cacheTagsHeader = opts.cacheTagsHeader.toLowerCase()
       }
     }
   }
 
-  get isFull () {
-    return this.#entryCount >= this.#maxEntries
-  }
-
   getRoutes () {
     const cachedRoutes = []
 
-    for (const origin of this.#data.keys()) {
-      const originPaths = this.#data.get(origin)
-      if (!originPaths) continue
-  
-      for (const cachedValue of originPaths.keys()) {
-        const [path, method] = cachedValue.split(':')
-        const url = new URL(path, origin).href
-        cachedRoutes.push({ method, url })
+    for (const [origin, originValues] of this.#entries) {
+      for (const [path, pathValues] of originValues) {
+        for (const [method] of pathValues) {
+          const url = new URL(path, origin).href
+          cachedRoutes.push({ method, url })
+        }
       }
     }
 
     return cachedRoutes
   }
 
-  createReadStream (req) {
-    if (typeof req !== 'object') {
-      throw new TypeError(`expected req to be object, got ${typeof req}`)
+  get (key) {
+    if (typeof key !== 'object') {
+      throw new TypeError(`expected key to be object, got ${typeof key}`)
     }
 
-    const values = this.#getValuesForRequest(req, false)
-    if (!values) {
-      return undefined
-    }
+    const entries = this.#getEntries(key)
+    if (!entries) return undefined
 
-    const value = this.#findValue(req, values)
+    const now = Date.now()
+    const entry = entries.find((entry) => (
+      entry.deleteAt > now &&
+      (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
+    ))
 
-    if (!value || value.readLock) {
-      return undefined
-    }
-
-    return new MemoryStoreReadableStream(value)
-  }
-
-  createWriteStream (req, opts) {
-    if (typeof req !== 'object') {
-      throw new TypeError(`expected req to be object, got ${typeof req}`)
-    }
-    if (typeof opts !== 'object') {
-      throw new TypeError(`expected value to be object, got ${typeof opts}`)
-    }
-
-    if (this.isFull) {
-      return undefined
-    }
-
-    const cacheTags = this.#parseCacheTags(opts.rawHeaders)
-    this.#saveCacheTags(req, cacheTags)
-
-    opts.cacheTags = cacheTags
-
-    const values = this.#getValuesForRequest(req, true)
-
-    let value = this.#findValue(req, values)
-    if (!value) {
-      // The value doesn't already exist, meaning we haven't cached this
-      //  response before. Let's assign it a value and insert it into our data
-      //  property.
-
-      if (this.isFull) {
-        // Or not, we don't have space to add another response
-        return undefined
-      }
-
-      this.#entryCount++
-
-      value = {
-        readers: 0,
-        readLock: false,
-        writeLock: false,
-        opts,
-        body: []
-      }
-
-      // We want to sort our responses in decending order by their deleteAt
-      //  timestamps so that deleting expired responses is faster
-      if (
-        values.length === 0 ||
-        opts.deleteAt < values[values.length - 1].deleteAt
-      ) {
-        // Our value is either the only response for this path or our deleteAt
-        //  time is sooner than all the other responses
-        values.push(value)
-      } else if (opts.deleteAt >= values[0].deleteAt) {
-        // Our deleteAt is later than everyone elses
-        values.unshift(value)
-      } else {
-        // We're neither in the front or the end, let's just binary search to
-        //  find our stop we need to be in
-        let startIndex = 0
-        let endIndex = values.length
-        while (true) {
-          if (startIndex === endIndex) {
-            values.splice(startIndex, 0, value)
-            break
-          }
-
-          const middleIndex = Math.floor((startIndex + endIndex) / 2)
-          const middleValue = values[middleIndex]
-          if (opts.deleteAt === middleIndex) {
-            values.splice(middleIndex, 0, value)
-            break
-          } else if (opts.deleteAt > middleValue.opts.deleteAt) {
-            endIndex = middleIndex
-            continue
-          } else {
-            startIndex = middleIndex
-            continue
-          }
+    return entry == null
+      ? undefined
+      : {
+          statusMessage: entry.statusMessage,
+          statusCode: entry.statusCode,
+          rawHeaders: entry.rawHeaders,
+          body: entry.body,
+          etag: entry.etag,
+          cacheTags: entry.cacheTags,
+          cachedAt: entry.cachedAt,
+          staleAt: entry.staleAt,
+          deleteAt: entry.deleteAt
         }
-      }
-    } else {
-      // Check if there's already another request writing to the value or
-      //  a request reading from it
-      if (value.writeLock || value.readLock) {
-        return undefined
-      }
-
-      // Empty it so we can overwrite it
-      value.body = []
-    }
-
-    const writable = new MemoryStoreWritableStream(
-      value,
-      this.#maxEntrySize
-    )
-
-    // Remove the value if there was some error
-    writable.on('error', (err) => {
-      values.filter(current => value !== current)
-      if (this.#errorCallback) {
-        this.#errorCallback(err)
-      }
-    })
-
-    writable.on('bodyOversized', () => {
-      values.filter(current => value !== current)
-    })
-
-    return writable
   }
 
-  deleteByOrigin (origin) {
-    this.#data.delete(origin)
-    this.#tags.delete(origin)
+  createWriteStream (key, val) {
+    if (typeof key !== 'object') {
+      throw new TypeError(`expected key to be object, got ${typeof key}`)
+    }
+    if (typeof val !== 'object') {
+      throw new TypeError(`expected value to be object, got ${typeof val}`)
+    }
+
+    const cacheTags = this.#parseCacheTags(val.rawHeaders)
+    this.#saveCacheTags(key, cacheTags)
+
+    const store = this
+    const entry = { ...key, ...val, cacheTags, body: [], size: 0 }
+
+    return new Writable({
+      write (chunk, encoding, callback) {
+        if (typeof chunk === 'string') {
+          chunk = Buffer.from(chunk, encoding)
+        }
+
+        entry.size += chunk.byteLength
+
+        if (entry.size >= store.#maxEntrySize) {
+          this.destroy()
+        } else {
+          entry.body.push(chunk)
+        }
+
+        callback(null)
+      },
+      final (callback) {
+        store.#saveEntry(key, entry)
+        callback(null)
+      }
+    })
+  }
+
+  delete (key) {
+    if (typeof key !== 'object') {
+      throw new TypeError(`expected key to be object, got ${typeof key}`)
+    }
+
+    const originValues = this.#entries.get(key.origin)
+    if (!originValues) return
+
+    const pathValues = originValues.get(key.path)
+    if (!pathValues) return
+
+    for (const entries of pathValues.values()) {
+      for (const entry of entries) {
+        this.#deleteEntry(key, entry)
+      }
+    }
+
+    originValues.delete(key.path)
   }
 
   deleteRoutes (routes) {
     for (const { method, url } of routes) {
       const { origin, pathname, search, hash } = new URL(url)
-      
-      const originRoutes = this.#data.get(origin)
-      if (!originRoutes) continue
-      
       const path = `${pathname}${search}${hash}`
-      const cacheKey = `${path}:${method}`
-      const cacheValues = originRoutes.get(cacheKey)
-
-      if (!cacheValues || cacheValues.length === 0) continue
-
-      for (const cacheValue of cacheValues) {
-        const cacheTags = cacheValue.opts.cacheTags
-        if (cacheTags && cacheTags.length > 0) {
-          this.#unlinkRouteFromCacheTag(origin, cacheTags, cacheKey)
-        }
-      }
-
-      originRoutes.delete(cacheKey)
+      this.#deleteByKey({ origin, path, method })
     }
   }
 
@@ -256,19 +194,58 @@ class MemoryCacheStore {
     const originTags = this.#tags.get(origin)
     if (!originTags) return
 
-    const originRoutes = this.#data.get(origin)
-    if (!originRoutes) return
+    const originValues = this.#entries.get(origin)
+    if (!originValues) return
 
     for (const cacheTag of cacheTags) {
       const cacheKeys = originTags.get(cacheTag)
       if (!cacheKeys) continue
 
       for (const cacheKey of cacheKeys) {
-        originRoutes.delete(cacheKey)
+        const [path, method] = cacheKey.split(':')
+        this.#deleteByKey({ origin, path, method })
       }
 
       originTags.delete(cacheTag)
     }
+  }
+
+  #saveEntry (key, entry) {
+    let originValues = this.#entries.get(key.origin)
+    if (!originValues) {
+      originValues = new Map()
+      this.#entries.set(key.origin, originValues)
+    }
+
+    let pathValues = originValues.get(key.path)
+    if (!pathValues) {
+      pathValues = new Map()
+      originValues.set(key.path, pathValues)
+    }
+
+    let entries = pathValues.get(key.method)
+    if (!entries) {
+      entries = []
+      pathValues.set(key.method, entries)
+    }
+    entries.push(entry)
+
+    this.#size += entry.size
+    this.#count += 1
+
+    if (this.#size > this.#maxSize || this.#count > this.#maxCount) {
+      this.#deleteHalf()
+    }
+  }
+
+  #getEntries (key) {
+    const originValues = this.#entries.get(key.origin)
+    if (!originValues) return undefined
+
+    const pathValues = originValues.get(key.path)
+    if (!pathValues) return undefined
+
+    return pathValues.get(key.method)
   }
 
   #parseCacheTags (rawHeaders) {
@@ -287,9 +264,79 @@ class MemoryCacheStore {
     return []
   }
 
-  #unlinkRouteFromCacheTag (origin, cacheTags, cacheKey) {
-    const originTags = this.#tags.get(origin)
+  #saveCacheTags (key, cacheTags) {
+    if (cacheTags.length === 0) return
+
+    let originTags = this.#tags.get(key.origin)
+    if (!originTags) {
+      originTags = new Map()
+      this.#tags.set(key.origin, originTags)
+    }
+
+    for (const cacheTag of cacheTags) {
+      let tagPaths = originTags.get(cacheTag)
+      if (!tagPaths) {
+        tagPaths = new Set()
+        originTags.set(cacheTag, tagPaths)
+      }
+      tagPaths.add(`${key.path}:${key.method}`)
+    }
+  }
+
+  #deleteHalf () {
+    for (const [origin, originValues] of this.#entries) {
+      for (const [path, pathValues] of originValues) {
+        for (const [method, entries] of pathValues) {
+          for (const entry of entries.splice(0, entries.length / 2)) {
+            this.#deleteEntry({ origin, path, method }, entry)
+          }
+          if (entries.length === 0) {
+            entries.delete(key)
+          }
+        }
+        if (pathValues.length === 0) {
+          pathValues.delete(key)
+        }
+      }
+      if (originValues.length === 0) {
+        originValues.delete(key)
+      }
+    }
+  }
+
+  #deleteByKey (key) {
+    const originValues = this.#entries.get(key.origin)
+    if (!originValues) return
+
+    const pathValues = originValues.get(key.path)
+    if (!pathValues) return
+
+    const entries = pathValues.get(key.method)
+    if (!entries) return
+
+    for (const entry of entries) {
+      this.#deleteEntry(key, entry)
+    }
+
+    pathValues.delete(key.method)
+
+    if (pathValues.size === 0) {
+      originValues.delete(key.path)
+    }
+  }
+
+  #deleteEntry (key, entry) {
+    this.#size -= entry.size
+    this.#count -= 1
+
+    this.#unlinkRouteFromCacheTag(key, entry.cacheTags)
+  }
+
+  #unlinkRouteFromCacheTag (key, cacheTags) {
+    const originTags = this.#tags.get(key.origin)
     if (!originTags) return
+
+    const cacheKey = `${key.path}:${key.method}`
 
     for (const cacheTag of cacheTags) {
       const cacheKeys = originTags.get(cacheTag)
@@ -301,185 +348,6 @@ class MemoryCacheStore {
         originTags.delete(cacheTag)
       }
     }
-  }
-
-  #getValuesForRequest (req, makeIfDoesntExist) {
-    // https://www.rfc-editor.org/rfc/rfc9111.html#section-2-3
-    let cachedPaths = this.#data.get(req.origin)
-    if (!cachedPaths) {
-      if (!makeIfDoesntExist) {
-        return undefined
-      }
-
-      cachedPaths = new Map()
-      this.#data.set(req.origin, cachedPaths)
-    }
-
-    let values = cachedPaths.get(`${req.path}:${req.method}`)
-    if (!values && makeIfDoesntExist) {
-      values = []
-      cachedPaths.set(`${req.path}:${req.method}`, values)
-    }
-
-    return values
-  }
-
-  #saveCacheTags (req, cacheTags) {
-    if (cacheTags.length === 0) return
-
-    let originTags = this.#tags.get(req.origin)
-    if (!originTags) {
-      originTags = new Map()
-      this.#tags.set(req.origin, originTags)
-    }
-
-    for (const cacheTag of cacheTags) {
-      let tagPaths = originTags.get(cacheTag)
-      if (!tagPaths) {
-        tagPaths = new Set()
-        originTags.set(cacheTag, tagPaths)
-      }
-      tagPaths.add(`${req.path}:${req.method}`)
-    }
-  }
-
-  #findValue (req, values) {
-    /**
-     * @type {MemoryStoreValue}
-     */
-    let value
-    const now = Date.now()
-    for (let i = values.length - 1; i >= 0; i--) {
-      const current = values[i]
-      const currentCacheValue = current.opts
-      if (now >= currentCacheValue.deleteAt) {
-        const cacheTags = currentCacheValue.cacheTags
-        if (cacheTags) {
-          const cacheKey = `${req.path}:${req.method}`
-          this.#unlinkRouteFromCacheTag(req.origin, cacheTags, cacheKey)
-        }
-
-        // We've reached expired values, let's delete them
-        this.#entryCount -= values.length - i
-        values.length = i
-        break
-      }
-
-      let matches = true
-
-      if (currentCacheValue.vary) {
-        if (!req.headers) {
-          matches = false
-          break
-        }
-
-        for (const key in currentCacheValue.vary) {
-          if (currentCacheValue.vary[key] !== req.headers[key]) {
-            matches = false
-            break
-          }
-        }
-      }
-
-      if (matches) {
-        value = current
-        break
-      }
-    }
-
-    return value
-  }
-}
-
-class MemoryStoreReadableStream extends Readable {
-  #value
-  #chunksToSend = []
-
-  constructor (value) {
-    super()
-
-    if (value.readLock) {
-      throw new Error('can\'t read a locked value')
-    }
-
-    this.#value = value
-    this.#chunksToSend = value?.body ? [...value.body, null] : [null]
-
-    this.#value.readers++
-    this.#value.writeLock = true
-
-    this.on('close', () => {
-      this.#value.readers--
-
-      if (this.#value.readers === 0) {
-        this.#value.writeLock = false
-      }
-    })
-  }
-
-  get value () {
-    return this.#value.opts
-  }
-
-  _read (size) {
-    if (this.#chunksToSend.length === 0) {
-      throw new Error('no chunks left to read, stream should have closed')
-    }
-
-    if (size > this.#chunksToSend.length) {
-      size = this.#chunksToSend.length
-    }
-
-    for (let i = 0; i < size; i++) {
-      this.push(this.#chunksToSend.shift())
-    }
-  }
-}
-
-class MemoryStoreWritableStream extends Writable {
-  #value
-  #currentSize = 0
-  #maxEntrySize = 0
-  #body = []
-
-  constructor (value, maxEntrySize) {
-    super()
-    this.#value = value
-    this.#value.readLock = true
-    this.#maxEntrySize = maxEntrySize ?? Infinity
-  }
-
-  get rawTrailers () {
-    return this.#value.opts.rawTrailers
-  }
-
-  set rawTrailers (trailers) {
-    this.#value.opts.rawTrailers = trailers
-  }
-
-  _write (chunk, encoding, callback) {
-    if (typeof chunk === 'string') {
-      chunk = Buffer.from(chunk, encoding)
-    }
-
-    this.#currentSize += chunk.byteLength
-    if (this.#currentSize < this.#maxEntrySize) {
-      this.#body.push(chunk)
-    } else {
-      this.#body = null // release memory as early as possible
-      this.emit('bodyOversized')
-    }
-
-    callback()
-  }
-
-  _final (callback) {
-    if (this.#currentSize < this.#maxEntrySize) {
-      this.#value.readLock = false
-      this.#value.body = this.#body
-    }
-
-    callback()
   }
 }
 
