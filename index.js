@@ -86,7 +86,7 @@ class MemoryCacheStore {
 
     for (const [origin, originValues] of this.#entries) {
       for (const [path, pathValues] of originValues) {
-        for (const [method, entries] of pathValues) {
+        for (const [method] of pathValues) {
           const url = new URL(path, origin).href
           cachedRoutes.push({ method, url })
         }
@@ -175,19 +175,31 @@ class MemoryCacheStore {
 
     for (const entries of pathValues.values()) {
       for (const entry of entries) {
-        this.#size -= entry.size
-        this.#count -= 1
-
-        this.#unlinkRouteFromCacheTag(
-          entry.cacheTags,
-          key.origin,
-          key.path,
-          key.method
-        )
+        this.#deleteEntry(key, entry)
       }
     }
 
     originValues.delete(key.path)
+  }
+
+  deleteRoutes (routes) {
+    for (const { method, url } of routes) {
+      const { origin, pathname, search, hash } = new URL(url)
+      
+      const originValues = this.#entries.get(origin)
+      if (!originValues) continue
+
+      const path = `${pathname}${search}${hash}`
+      const pathValues = originValues.get(path)
+      if (!pathValues) continue
+      
+      const entries = pathValues.get(method)
+      if (!entries || entries.length === 0) continue
+
+      for (const entry of entries) {
+        this.#deleteEntry({ origin, path, method }, entry)
+      }
+    }
   }
 
   deleteByCacheTags (origin, cacheTags) {
@@ -246,11 +258,7 @@ class MemoryCacheStore {
         for (const [path, pathValues] of originValues) {
           for (const [method, entries] of pathValues) {
             for (const entry of entries.splice(0, entries.length / 2)) {
-              this.#size -= entry.size
-              this.#count -= 1
-
-              const cacheTags = entry.cacheTags
-              this.#unlinkRouteFromCacheTag(cacheTags, origin, path, method)
+              this.#deleteEntry({ origin, path, method }, entry)
             }
             if (entries.length === 0) {
               entries.delete(key)
@@ -312,11 +320,18 @@ class MemoryCacheStore {
     }
   }
 
-  #unlinkRouteFromCacheTag (cacheTags, origin, path, method) {
-    const originTags = this.#tags.get(origin)
+  #deleteEntry (key, entry) {
+    this.#size -= entry.size
+    this.#count -= 1
+
+    this.#unlinkRouteFromCacheTag(key, entry.cacheTags)
+  }
+
+  #unlinkRouteFromCacheTag (key, cacheTags) {
+    const originTags = this.#tags.get(key.origin)
     if (!originTags) return
 
-    const cacheKey = `${path}:${method}`
+    const cacheKey = `${key.path}:${key.method}`
 
     for (const cacheTag of cacheTags) {
       const cacheKeys = originTags.get(cacheTag)
