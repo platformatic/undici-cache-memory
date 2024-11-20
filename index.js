@@ -185,20 +185,8 @@ class MemoryCacheStore {
   deleteRoutes (routes) {
     for (const { method, url } of routes) {
       const { origin, pathname, search, hash } = new URL(url)
-      
-      const originValues = this.#entries.get(origin)
-      if (!originValues) continue
-
       const path = `${pathname}${search}${hash}`
-      const pathValues = originValues.get(path)
-      if (!pathValues) continue
-      
-      const entries = pathValues.get(method)
-      if (!entries || entries.length === 0) continue
-
-      for (const entry of entries) {
-        this.#deleteEntry({ origin, path, method }, entry)
-      }
+      this.#deleteByKey({ origin, path, method })
     }
   }
 
@@ -215,21 +203,7 @@ class MemoryCacheStore {
 
       for (const cacheKey of cacheKeys) {
         const [path, method] = cacheKey.split(':')
-
-        const pathValues = originValues.get(path)
-        if (!pathValues) continue
-
-        const entries = pathValues.get(method)
-        if (!entries) continue
-
-        for (const entry of entries) {
-          this.#deleteEntry({ origin, path, method }, entry)
-        }
-        pathValues.delete(method)
-
-        if (pathValues.size === 0) {
-          originValues.delete(path)
-        }
+        this.#deleteByKey({ origin, path, method })
       }
 
       originTags.delete(cacheTag)
@@ -260,24 +234,7 @@ class MemoryCacheStore {
     this.#count += 1
 
     if (this.#size > this.#maxSize || this.#count > this.#maxCount) {
-      for (const [origin, originValues] of this.#entries) {
-        for (const [path, pathValues] of originValues) {
-          for (const [method, entries] of pathValues) {
-            for (const entry of entries.splice(0, entries.length / 2)) {
-              this.#deleteEntry({ origin, path, method }, entry)
-            }
-            if (entries.length === 0) {
-              entries.delete(key)
-            }
-          }
-          if (pathValues.length === 0) {
-            pathValues.delete(key)
-          }
-        }
-        if (originValues.length === 0) {
-          originValues.delete(key)
-        }
-      }
+      this.#deleteHalf()
     }
   }
 
@@ -323,6 +280,48 @@ class MemoryCacheStore {
         originTags.set(cacheTag, tagPaths)
       }
       tagPaths.add(`${key.path}:${key.method}`)
+    }
+  }
+
+  #deleteHalf () {
+    for (const [origin, originValues] of this.#entries) {
+      for (const [path, pathValues] of originValues) {
+        for (const [method, entries] of pathValues) {
+          for (const entry of entries.splice(0, entries.length / 2)) {
+            this.#deleteEntry({ origin, path, method }, entry)
+          }
+          if (entries.length === 0) {
+            entries.delete(key)
+          }
+        }
+        if (pathValues.length === 0) {
+          pathValues.delete(key)
+        }
+      }
+      if (originValues.length === 0) {
+        originValues.delete(key)
+      }
+    }
+  }
+
+  #deleteByKey (key) {
+    const originValues = this.#entries.get(key.origin)
+    if (!originValues) return
+
+    const pathValues = originValues.get(key.path)
+    if (!pathValues) return
+
+    const entries = pathValues.get(key.method)
+    if (!entries) return
+
+    for (const entry of entries) {
+      this.#deleteEntry(key, entry)
+    }
+
+    pathValues.delete(key.method)
+
+    if (pathValues.size === 0) {
+      originValues.delete(key.path)
     }
   }
 
