@@ -81,21 +81,6 @@ class MemoryCacheStore {
     }
   }
 
-  getRoutes () {
-    const cachedRoutes = []
-
-    for (const [origin, originValues] of this.#entries) {
-      for (const [path, pathValues] of originValues) {
-        for (const [method] of pathValues) {
-          const url = new URL(path, origin).href
-          cachedRoutes.push({ method, url })
-        }
-      }
-    }
-
-    return cachedRoutes
-  }
-
   get (key) {
     if (typeof key !== 'object') {
       throw new TypeError(`expected key to be object, got ${typeof key}`)
