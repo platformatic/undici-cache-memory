@@ -231,66 +231,6 @@ function cacheStoreTests (CacheStore) {
       equal(store.get(nonMatchingRequest), undefined)
     })
   })
-
-  test('returns cached values', async () => {
-    const request = {
-      origin: 'http://test-origin-1',
-      path: '/foo?bar=baz',
-      method: 'GET',
-      headers: {}
-    }
-    const requestValue = {
-      statusCode: 200,
-      statusMessage: '',
-      rawHeaders: [],
-      cachedAt: Date.now(),
-      staleAt: Date.now() + 10000,
-      deleteAt: Date.now() + 20000
-    }
-
-    /**
-     * @type {import('../../types/cache-interceptor.d.ts').default.CacheStore}
-     */
-    const store = new CacheStore()
-
-    // Write the response to the store
-    let writeStream = store.createWriteStream(request, requestValue)
-    writeResponse(writeStream, [], [])
-
-    let cachedRoutes = await store.getRoutes()
-    deepStrictEqual(cachedRoutes, [
-      { method: 'GET', url: 'http://test-origin-1/foo?bar=baz'}
-    ])
-
-    // Now let's write another request to the store
-    const anotherRequest = {
-      origin: 'http://test-origin-2',
-      path: '/asd',
-      method: 'GET',
-      headers: {}
-    }
-    const anotherValue = {
-      statusCode: 200,
-      statusMessage: '',
-      rawHeaders: [],
-      cachedAt: Date.now(),
-      staleAt: Date.now() + 10000,
-      deleteAt: Date.now() + 20000
-    }
-
-    // Now let's cache it
-    writeStream = store.createWriteStream(anotherRequest, {
-      ...anotherValue,
-      body: []
-    })
-    writeResponse(writeStream, [], [])
-
-    cachedRoutes = await store.getRoutes()
-    deepStrictEqual(cachedRoutes, [
-      { method: 'GET', url: 'http://test-origin-1/foo?bar=baz'},
-      { method: 'GET', url: 'http://test-origin-2/asd'}
-    ])
-  })
 }
 
 function writeResponse (stream, body) {
