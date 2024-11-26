@@ -100,7 +100,7 @@ class MemoryCacheStore {
       : {
           statusMessage: entry.statusMessage,
           statusCode: entry.statusCode,
-          rawHeaders: entry.rawHeaders,
+          headers: entry.headers,
           body: entry.body,
           etag: entry.etag,
           cacheTags: entry.cacheTags,
@@ -118,7 +118,7 @@ class MemoryCacheStore {
       throw new TypeError(`expected value to be object, got ${typeof val}`)
     }
 
-    const cacheTags = this.#parseCacheTags(val.rawHeaders)
+    const cacheTags = this.#parseCacheTags(val.headers)
     this.#saveCacheTags(key, cacheTags)
 
     const store = this
@@ -233,17 +233,16 @@ class MemoryCacheStore {
     return pathValues.get(key.method)
   }
 
-  #parseCacheTags (rawHeaders) {
+  #parseCacheTags (headers) {
     if (!this.#cacheTagsHeader) {
       return []
     }
 
-    for (let i = 0; i < rawHeaders.length; i += 2) {
-      const headerName = rawHeaders[i].toString().toLowerCase()
+    for (const [header, headerValue] of Object.entries(headers)) {
+      const headerName = header.toLowerCase()
       if (headerName !== this.#cacheTagsHeader) continue
 
-      const headerValue = rawHeaders[i + 1].toString()
-      return headerValue.split(',')
+      return headerValue.toString().split(',')
     }
 
     return []
