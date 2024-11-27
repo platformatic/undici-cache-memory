@@ -151,45 +151,22 @@ class MemoryCacheStore {
     if (typeof key !== 'object') {
       throw new TypeError(`expected key to be object, got ${typeof key}`)
     }
-
-    const originValues = this.#entries.get(key.origin)
-    if (!originValues) return
-
-    const pathValues = originValues.get(key.path)
-    if (!pathValues) return
-
-    for (const entries of pathValues.values()) {
-      for (const entry of entries) {
-        this.#deleteEntry(key, entry)
-      }
-    }
-
-    originValues.delete(key.path)
+    this.#deleteByKey(key, { deleteAllMethods: true })
   }
 
   deleteMany (keys) {
     for (const key of keys) {
-      this.#deleteByKey(key)
-    }
-  }
-
-  deleteByCacheTags (origin, cacheTags) {
-    const originTags = this.#tags.get(origin)
-    if (!originTags) return
-
-    const originValues = this.#entries.get(origin)
-    if (!originValues) return
-
-    for (const cacheTag of cacheTags) {
-      const cacheKeys = originTags.get(cacheTag)
-      if (!cacheKeys) continue
-
-      for (const cacheKey of cacheKeys) {
-        const [path, method] = cacheKey.split(':')
-        this.#deleteByKey({ origin, path, method })
+      if (key.origin === undefined) {
+        throw new TypeError('key.origin must be defined')
       }
-
-      originTags.delete(cacheTag)
+      if (key.path) {
+        this.#deleteByKey(key)
+        continue
+      }
+      if (key.tags) {
+        this.#deleteByCacheTags(key.origin, key.tags)
+        continue
+      }
     }
   }
 
@@ -286,24 +263,53 @@ class MemoryCacheStore {
     }
   }
 
-  #deleteByKey (key) {
+  #deleteByKey (key, opts = {}) {
+    const deleteAllMethods = opts.deleteAllMethods ?? false
+
     const originValues = this.#entries.get(key.origin)
     if (!originValues) return
 
     const pathValues = originValues.get(key.path)
     if (!pathValues) return
 
-    const entries = pathValues.get(key.method)
-    if (!entries) return
+    let entries = []
+    if (deleteAllMethods || key.method === undefined) {
+      for (const methodEntries of pathValues.values()) {
+        entries.push(...methodEntries)
+      }
+    } else {
+      entries = pathValues.get(key.method)
+      pathValues.delete(key.method)
+    }
+
+    if (entries.length === 0) return
 
     for (const entry of entries) {
       this.#deleteEntry(key, entry)
     }
 
-    pathValues.delete(key.method)
-
     if (pathValues.size === 0) {
       originValues.delete(key.path)
+    }
+  }
+
+  #deleteByCacheTags (origin, cacheTags) {
+    const originTags = this.#tags.get(origin)
+    if (!originTags) return
+
+    const originValues = this.#entries.get(origin)
+    if (!originValues) return
+
+    for (const cacheTag of cacheTags) {
+      const cacheKeys = originTags.get(cacheTag)
+      if (!cacheKeys) continue
+
+      for (const cacheKey of cacheKeys) {
+        const [path, method] = cacheKey.split(':')
+        this.#deleteByKey({ origin, path, method })
+      }
+
+      originTags.delete(cacheTag)
     }
   }
 

@@ -39,7 +39,6 @@ function cacheStoreTests (CacheStore) {
       equal(typeof store.createWriteStream, 'function')
       equal(typeof store.delete, 'function')
       equal(typeof store.deleteMany, 'function')
-      equal(typeof store.deleteByCacheTags, 'function')
     })
 
     // Checks that it can store & fetch different responses
