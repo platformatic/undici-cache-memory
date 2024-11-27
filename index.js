@@ -154,19 +154,21 @@ class MemoryCacheStore {
     this.#deleteByKey(key, { deleteAllMethods: true })
   }
 
-  deleteMany (keys) {
+  deleteKeys (keys) {
     for (const key of keys) {
       if (key.origin === undefined) {
         throw new TypeError('key.origin must be defined')
       }
-      if (key.path) {
-        this.#deleteByKey(key)
-        continue
+      if (key.path === undefined) {
+        throw new TypeError('key.path must be defined')
       }
-      if (key.tags) {
-        this.#deleteByCacheTags(key.origin, key.tags)
-        continue
-      }
+      this.#deleteByKey(key)
+    }
+  }
+
+  deleteTags (tags) {
+    for (const tag of tags) {
+      this.#deleteByTag(tag)
     }
   }
 
@@ -226,20 +228,31 @@ class MemoryCacheStore {
   #saveCacheTags (key, cacheTags) {
     if (cacheTags.length === 0) return
 
-    let originTags = this.#tags.get(key.origin)
-    if (!originTags) {
-      originTags = new Map()
-      this.#tags.set(key.origin, originTags)
-    }
-
     for (const cacheTag of cacheTags) {
-      let tagPaths = originTags.get(cacheTag)
+      let tagPaths = this.#tags.get(cacheTag)
       if (!tagPaths) {
         tagPaths = new Set()
-        originTags.set(cacheTag, tagPaths)
+        this.#tags.set(cacheTag, tagPaths)
       }
-      tagPaths.add(`${key.path}:${key.method}`)
+      tagPaths.add(
+        `${encodeURIComponent(key.origin)}:` +
+        `${encodeURIComponent(key.path)}:` +
+        `${encodeURIComponent(key.method)}`
+      )
     }
+  }
+
+  #deleteByTag (cacheTag) {
+    const cacheKeys = this.#tags.get(cacheTag)
+    if (!cacheKeys) return
+
+    for (const cacheKey of cacheKeys) {
+      const [origin, path, method] = cacheKey.split(':')
+        .map(decodeURIComponent)
+      this.#deleteByKey({ origin, path, method })
+    }
+
+    this.#tags.delete(cacheTag)
   }
 
   #deleteHalf () {
@@ -290,26 +303,6 @@ class MemoryCacheStore {
 
     if (pathValues.size === 0) {
       originValues.delete(key.path)
-    }
-  }
-
-  #deleteByCacheTags (origin, cacheTags) {
-    const originTags = this.#tags.get(origin)
-    if (!originTags) return
-
-    const originValues = this.#entries.get(origin)
-    if (!originValues) return
-
-    for (const cacheTag of cacheTags) {
-      const cacheKeys = originTags.get(cacheTag)
-      if (!cacheKeys) continue
-
-      for (const cacheKey of cacheKeys) {
-        const [path, method] = cacheKey.split(':')
-        this.#deleteByKey({ origin, path, method })
-      }
-
-      originTags.delete(cacheTag)
     }
   }
 
