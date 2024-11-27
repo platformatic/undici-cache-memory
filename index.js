@@ -167,11 +167,9 @@ class MemoryCacheStore {
     originValues.delete(key.path)
   }
 
-  deleteRoutes (routes) {
-    for (const { method, url } of routes) {
-      const { origin, pathname, search, hash } = new URL(url)
-      const path = `${pathname}${search}${hash}`
-      this.#deleteByKey({ origin, path, method })
+  deleteMany (keys) {
+    for (const key of keys) {
+      this.#deleteByKey(key)
     }
   }
 

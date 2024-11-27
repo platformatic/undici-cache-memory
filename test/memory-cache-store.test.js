@@ -38,6 +38,7 @@ function cacheStoreTests (CacheStore) {
       equal(typeof store.get, 'function')
       equal(typeof store.createWriteStream, 'function')
       equal(typeof store.delete, 'function')
+      equal(typeof store.deleteMany, 'function')
       equal(typeof store.deleteByCacheTags, 'function')
     })
 
