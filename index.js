@@ -98,16 +98,16 @@ class MemoryCacheStore {
     return entry == null
       ? undefined
       : {
-          statusMessage: entry.statusMessage,
-          statusCode: entry.statusCode,
-          headers: entry.headers,
-          body: entry.body,
-          etag: entry.etag,
-          cacheTags: entry.cacheTags,
-          cachedAt: entry.cachedAt,
-          staleAt: entry.staleAt,
-          deleteAt: entry.deleteAt
-        }
+        statusMessage: entry.statusMessage,
+        statusCode: entry.statusCode,
+        headers: entry.headers,
+        body: entry.body,
+        etag: entry.etag,
+        cacheTags: entry.cacheTags,
+        cachedAt: entry.cachedAt,
+        staleAt: entry.staleAt,
+        deleteAt: entry.deleteAt
+      }
   }
 
   createWriteStream (key, val) {
@@ -295,10 +295,13 @@ class MemoryCacheStore {
       pathValues.delete(key.method)
     }
 
-    if (entries.length === 0) return
+    if (!entries || entries.length === 0) return
 
     for (const entry of entries) {
       this.#deleteEntry(key, entry)
+      if (entry.cacheTags) {
+        this.deleteTags(entry.cacheTags)
+      }
     }
 
     if (pathValues.size === 0) {
@@ -314,34 +317,20 @@ class MemoryCacheStore {
   }
 
   #unlinkRouteFromCacheTag (key, cacheTags) {
+    const originTags = this.#tags.get(key.origin)
+    if (!originTags) return
+
+    const cacheKey = `${key.path}:${key.method}`
+
     for (const cacheTag of cacheTags) {
-      const cacheKeys = this.#tags.get(cacheTag)
+      const cacheKeys = originTags.get(cacheTag)
       if (!cacheKeys) continue
 
-      for (const cacheKey of cacheKeys) {
-        const [origin, path, method] = cacheKey.split(':').map(decodeURIComponent)
+      cacheKeys.delete(cacheKey)
 
-        const originMap = this.#entries.get(origin)
-        if (!originMap) continue
-
-        const pathMap = originMap.get(path)
-        if (!pathMap) continue
-
-        const methods = pathMap.get(method)
-        if (!methods) continue
-
-        pathMap.delete(method)
-
-        if (pathMap.size === 0) {
-          originMap.delete(path)
-        }
-
-        if (originMap.size === 0) {
-          this.#entries.delete(origin)
-        }
+      if (cacheKeys.size === 0) {
+        originTags.delete(cacheTag)
       }
-
-      this.#tags.delete(cacheTag)
     }
   }
 }
