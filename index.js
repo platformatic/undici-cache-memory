@@ -314,19 +314,31 @@ class MemoryCacheStore {
   }
 
   #unlinkRouteFromCacheTag (key, cacheTags) {
-    const originTags = this.#tags.get(key.origin)
-    if (!originTags) return
-
-    const cacheKey = `${key.path}:${key.method}`
-
     for (const cacheTag of cacheTags) {
-      const cacheKeys = originTags.get(cacheTag)
+      const cacheKeys = this.#tags.get(cacheTag)
       if (!cacheKeys) continue
 
-      cacheKeys.delete(cacheKey)
+      for (const cacheKey of cacheKeys) {
+        const [origin, path, method] = cacheKey.split(':').map(decodeURIComponent)
 
-      if (cacheKeys.size === 0) {
-        originTags.delete(cacheTag)
+        const originMap = this.#entries.get(origin)
+        if (!originMap) continue
+
+        const pathMap = originMap.get(path)
+        if (!pathMap) continue
+
+        const methods = pathMap.get(method)
+        if (!methods) continue
+
+        pathMap.delete(method)
+
+        if (pathMap.size === 0) {
+          originMap.delete(path)
+        }
+
+        if (originMap.size === 0) {
+          this.#entries.delete(origin)
+        }
       }
     }
   }
