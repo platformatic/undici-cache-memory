@@ -127,4 +127,190 @@ describe('Cache Interceptor', () => {
     strictEqual(requestsToOrigin, 2)
     strictEqual(await response.body.text(), 'asd')
   })
+
+  test('invalidates other origin responses with the same cache tag', async () => {
+    let requestsToOrigin = 0
+
+    const cacheTag = 'test-cache-tag-value-42'
+    const server = createServer((_, res) => {
+      requestsToOrigin++
+      res.setHeader('cache-control', 'public, s-maxage=10')
+      res.setHeader('cache-tag', cacheTag)
+      res.end('asd')
+    }).listen(0)
+
+    after(() => server.close())
+    await once(server, 'listening')
+
+    const cacheStore = new MemoryCacheStore({
+      cacheTagsHeader: 'cache-tag'
+    })
+  
+    const client = new Client(`http://localhost:${server.address().port}`)
+      .compose(interceptors.cache({ store: cacheStore }))
+
+    strictEqual(requestsToOrigin, 0)
+
+    // Send initial request. This should reach the origin
+    let response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 1)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send second request that should be handled by cache
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 1)
+    strictEqual(await response.body.text(), 'asd')
+    strictEqual(response.headers.age, '0')
+
+    // Send third request with different origin that should *not* be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 2)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send fourth request that should be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 2)
+    strictEqual(await response.body.text(), 'asd')
+    strictEqual(response.headers.age, '0')
+
+    cacheStore.deleteTags([cacheTag])
+
+    // Send fifth request that should reach the origin again
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 3)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send sixth request with different origin that should *not* be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 4)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send seventh request with different origin that should be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 4)
+    strictEqual(await response.body.text(), 'asd')
+  })
+
+  test('invalidates other origin responses with the same cache tag / 2', async () => {
+    let requestsToOrigin = 0
+
+    const cacheTag = 'test-cache-tag-value-42'
+    const server = createServer((_, res) => {
+      requestsToOrigin++
+      res.setHeader('cache-control', 'public, s-maxage=10')
+      res.setHeader('cache-tag', cacheTag)
+      res.end('asd')
+    }).listen(0)
+
+    after(() => server.close())
+    await once(server, 'listening')
+
+    const cacheStore = new MemoryCacheStore({
+      cacheTagsHeader: 'cache-tag'
+    })
+  
+    const client = new Client(`http://localhost:${server.address().port}`)
+      .compose(interceptors.cache({ store: cacheStore }))
+
+    strictEqual(requestsToOrigin, 0)
+
+    // Send initial request. This should reach the origin
+    let response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 1)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send second request that should be handled by cache
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 1)
+    strictEqual(await response.body.text(), 'asd')
+    strictEqual(response.headers.age, '0')
+
+    // Send third request with different origin that should *not* be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 2)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send fourth request that should be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 2)
+    strictEqual(await response.body.text(), 'asd')
+    strictEqual(response.headers.age, '0')
+
+    cacheStore.deleteKeys([{
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    }])
+
+    // Send fifth request that should reach the origin again
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 3)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send sixth request with different origin that should *not* be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 4)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send seventh request with different origin that should be handled by cache
+    response = await client.request({
+      origin: 'my-other-origin',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 4)
+    strictEqual(await response.body.text(), 'asd')
+  })
 })

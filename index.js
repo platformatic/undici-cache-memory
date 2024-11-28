@@ -98,16 +98,16 @@ class MemoryCacheStore {
     return entry == null
       ? undefined
       : {
-          statusMessage: entry.statusMessage,
-          statusCode: entry.statusCode,
-          headers: entry.headers,
-          body: entry.body,
-          etag: entry.etag,
-          cacheTags: entry.cacheTags,
-          cachedAt: entry.cachedAt,
-          staleAt: entry.staleAt,
-          deleteAt: entry.deleteAt
-        }
+        statusMessage: entry.statusMessage,
+        statusCode: entry.statusCode,
+        headers: entry.headers,
+        body: entry.body,
+        etag: entry.etag,
+        cacheTags: entry.cacheTags,
+        cachedAt: entry.cachedAt,
+        staleAt: entry.staleAt,
+        deleteAt: entry.deleteAt
+      }
   }
 
   createWriteStream (key, val) {
@@ -295,10 +295,13 @@ class MemoryCacheStore {
       pathValues.delete(key.method)
     }
 
-    if (entries.length === 0) return
+    if (!entries || entries.length === 0) return
 
     for (const entry of entries) {
       this.#deleteEntry(key, entry)
+      if (entry.cacheTags) {
+        this.deleteTags(entry.cacheTags)
+      }
     }
 
     if (pathValues.size === 0) {
