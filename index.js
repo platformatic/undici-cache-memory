@@ -340,6 +340,8 @@ class MemoryCacheStore {
           this.#entries.delete(origin)
         }
       }
+
+      this.#tags.delete(cacheTag)
     }
   }
 }
