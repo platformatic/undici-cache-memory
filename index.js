@@ -106,7 +106,8 @@ class MemoryCacheStore {
         cacheTags: entry.cacheTags,
         cachedAt: entry.cachedAt,
         staleAt: entry.staleAt,
-        deleteAt: entry.deleteAt
+        deleteAt: entry.deleteAt,
+        cacheControlDirectives: entry.cacheControlDirectives
       }
   }
 
