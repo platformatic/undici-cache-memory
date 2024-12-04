@@ -56,7 +56,8 @@ function cacheStoreTests (CacheStore) {
         headers: { foo: 'bar' },
         cachedAt: Date.now(),
         staleAt: Date.now() + 10000,
-        deleteAt: Date.now() + 20000
+        deleteAt: Date.now() + 20000,
+        cacheControlDirectives: []
       }
       const requestBody = ['asd', '123']
 
@@ -94,7 +95,8 @@ function cacheStoreTests (CacheStore) {
         headers: { foo: 'bar' },
         cachedAt: Date.now(),
         staleAt: Date.now() + 10000,
-        deleteAt: Date.now() + 20000
+        deleteAt: Date.now() + 20000,
+        cacheControlDirectives: []
       }
       const anotherBody = ['asd2', '1234']
 
@@ -133,7 +135,8 @@ function cacheStoreTests (CacheStore) {
         headers: { foo: 'bar' },
         cachedAt: Date.now() - 10000,
         staleAt: Date.now() - 1,
-        deleteAt: Date.now() + 20000
+        deleteAt: Date.now() + 20000,
+        cacheControlDirectives: []
       }
       const requestBody = ['part1', 'part2']
 
@@ -164,7 +167,8 @@ function cacheStoreTests (CacheStore) {
         statusMessage: '',
         cachedAt: Date.now() - 20000,
         staleAt: Date.now() - 10000,
-        deleteAt: Date.now() - 5
+        deleteAt: Date.now() - 5,
+        cacheControlDirectives: []
       }
       const requestBody = ['part1', 'part2']
 
@@ -195,7 +199,8 @@ function cacheStoreTests (CacheStore) {
         },
         cachedAt: Date.now(),
         staleAt: Date.now() + 10000,
-        deleteAt: Date.now() + 20000
+        deleteAt: Date.now() + 20000,
+        cacheControlDirectives: []
       }
       const requestBody = ['part1', 'part2']
 
