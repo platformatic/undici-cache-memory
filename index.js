@@ -90,12 +90,10 @@ class MemoryCacheStore {
     if (!entries) return undefined
 
     const now = Date.now()
-    const entry = entries.find((entry) => {
-      return (
-        entry.deleteAt > now &&
-        (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
-      )
-    })
+    const entry = entries.find((entry) => (
+      entry.deleteAt > now &&
+      (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
+    ))
 
     return entry == null
       ? undefined
