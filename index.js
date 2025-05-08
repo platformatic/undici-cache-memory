@@ -90,10 +90,7 @@ class MemoryCacheStore {
     if (!entries) return undefined
 
     const now = Date.now()
-    const entry = entries.find((entry) => (
-      entry.deleteAt > now &&
-      (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
-    ))
+    const entry = findEntry(key, entries, now)
 
     return entry == null
       ? undefined
@@ -105,6 +102,7 @@ class MemoryCacheStore {
         etag: entry.etag,
         cacheTags: entry.cacheTags,
         cachedAt: entry.cachedAt,
+        vary: entry.vary,
         staleAt: entry.staleAt,
         deleteAt: entry.deleteAt,
         cacheControlDirectives: entry.cacheControlDirectives
@@ -174,7 +172,7 @@ class MemoryCacheStore {
   }
 
   #saveEntry (key, entry) {
-    const existingEntry = this.get(key)
+    const existingEntry = findEntry(key, this.#getEntries(key) || [], Date.now())
     if (existingEntry) {
       this.#deleteEntry(key, existingEntry)
     }
@@ -353,5 +351,14 @@ class MemoryCacheStore {
     }
   }
 }
+
+function findEntry (key, entries, now) {
+  const entry = entries.find((entry) => (
+    entry.deleteAt > now &&
+    (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
+  ))
+  return entry
+}
+
 
 module.exports = MemoryCacheStore
