@@ -90,10 +90,12 @@ class MemoryCacheStore {
     if (!entries) return undefined
 
     const now = Date.now()
-    const entry = entries.find((entry) => (
-      entry.deleteAt > now &&
-      (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
-    ))
+    const entry = entries.find((entry) => {
+      return (
+        entry.deleteAt > now &&
+        (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
+      )
+    })
 
     return entry == null
       ? undefined
@@ -191,6 +193,21 @@ class MemoryCacheStore {
       entries = []
       pathValues.set(key.method, entries)
     }
+
+    const existingEntry = entries.findIndex((entry) => (
+      (entry.vary == null || Object.keys(entry.vary).every(headerName => {
+        if (entry.vary[headerName] === null) {
+          return key.headers[headerName] === undefined
+        }
+
+        return entry.vary[headerName] === key.headers[headerName]
+      }))
+    ))
+    if (existingEntry >= 0) {
+      entries.splice(existingEntry, 1, entry)
+      return
+    } 
+
     entries.push(entry)
 
     this.#size += entry.size

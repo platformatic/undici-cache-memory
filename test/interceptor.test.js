@@ -28,6 +28,7 @@ const { strictEqual } = require('node:assert')
 const { createServer } = require('node:http')
 const { once } = require('node:events')
 const { Client, interceptors } = require('undici')
+const { setTimeout: sleep } = require('node:timers/promises')
 const MemoryCacheStore = require('../index.js')
 
 describe('Cache Interceptor', () => {
@@ -311,6 +312,69 @@ describe('Cache Interceptor', () => {
       path: '/'
     })
     strictEqual(requestsToOrigin, 4)
+    strictEqual(await response.body.text(), 'asd')
+  })
+
+  test('invalidate by time', async () => {
+    let requestsToOrigin = 0
+
+    const server = createServer((_, res) => {
+      requestsToOrigin++
+      res.setHeader('cache-control', 'public, s-maxage=2')
+      res.end('asd')
+    }).listen(0)
+
+    const client = new Client(`http://localhost:${server.address().port}`)
+      .compose(interceptors.cache({
+        store: new MemoryCacheStore()
+      }))
+
+    after(async () => {
+      server.close()
+      await client.close()
+    })
+
+    await once(server, 'listening')
+
+    strictEqual(requestsToOrigin, 0)
+
+    // Send initial request. This should reach the origin
+    let response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 1)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send second request that should be handled by cache
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 1)
+    strictEqual(await response.body.text(), 'asd')
+    strictEqual(response.headers.age, '0')
+
+    await sleep(2000)
+
+    // Send third request that should reach the origin again
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 2)
+    strictEqual(await response.body.text(), 'asd')
+
+    // Send fourth request that should be handled by cache
+    response = await client.request({
+      origin: 'localhost',
+      method: 'GET',
+      path: '/'
+    })
+    strictEqual(requestsToOrigin, 2)
     strictEqual(await response.body.text(), 'asd')
   })
 })
