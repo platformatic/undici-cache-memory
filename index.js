@@ -30,6 +30,7 @@ class MemoryCacheStore {
   #maxSize = Infinity
   #maxEntrySize = Infinity
   #cacheTagsHeader = undefined
+  #deleteOnStale = false
 
   #size = 0
   #count = 0
@@ -75,6 +76,10 @@ class MemoryCacheStore {
         this.#maxEntrySize = opts.maxEntrySize
       }
 
+      if (typeof opts.deleteOnStale === 'boolean') {
+        this.#deleteOnStale = opts.deleteOnStale
+      }
+
       if (typeof opts.cacheTagsHeader === 'string') {
         this.#cacheTagsHeader = opts.cacheTagsHeader.toLowerCase()
       }
@@ -91,7 +96,7 @@ class MemoryCacheStore {
 
     const now = Date.now()
     const entry = entries.find((entry) => (
-      entry.deleteAt > now &&
+      this.#getEntryDeleteAt(entry) > now &&
       (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
     ))
 
@@ -351,6 +356,10 @@ class MemoryCacheStore {
         originTags.delete(cacheTag)
       }
     }
+  }
+
+  #getEntryDeleteAt (entry) {
+    return this.#deleteOnStale ? entry.staleAt : entry.deleteAt
   }
 }
 
