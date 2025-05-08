@@ -175,9 +175,8 @@ class MemoryCacheStore {
 
   #saveEntry (key, entry) {
     const existingEntry = this.get(key)
-    
     if (existingEntry) {
-      this.#deleteByKey(key)
+      this.#deleteEntry(key, existingEntry)
     }
 
     let originValues = this.#entries.get(key.origin)
@@ -267,19 +266,10 @@ class MemoryCacheStore {
     for (const [origin, originValues] of this.#entries) {
       for (const [path, pathValues] of originValues) {
         for (const [method, entries] of pathValues) {
-          for (const entry of entries.splice(0, entries.length / 2)) {
-            this.#deleteEntry({ origin, path, method }, entry)
-          }
-          if (entries.length === 0) {
-            entries.delete(key)
+          for (let i = 0; i < entries.length / 2; i++) {
+            this.#deleteEntry({ origin, path, method }, entries[i])
           }
         }
-        if (pathValues.length === 0) {
-          pathValues.delete(key)
-        }
-      }
-      if (originValues.length === 0) {
-        originValues.delete(key)
       }
     }
   }
@@ -300,7 +290,6 @@ class MemoryCacheStore {
       }
     } else {
       entries = pathValues.get(key.method)
-      pathValues.delete(key.method)
     }
 
     if (!entries || entries.length === 0) return
@@ -311,13 +300,23 @@ class MemoryCacheStore {
         this.deleteTags(entry.cacheTags)
       }
     }
-
-    if (pathValues.size === 0) {
-      originValues.delete(key.path)
-    }
   }
 
   #deleteEntry (key, entry) {
+    const originValues = this.#entries.get(key.origin)
+    if (!originValues) return
+
+    const pathValues = originValues.get(key.path)
+    if (!pathValues) return
+
+    const entries = pathValues.get(key.method)
+    if (!entries) return
+
+    const index = entries.indexOf(entry)
+    if (index === -1) return
+
+    entries.splice(index, 1)
+
     this.#size -= entry.size
     this.#count -= 1
 
