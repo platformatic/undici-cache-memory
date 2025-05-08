@@ -317,6 +317,18 @@ class MemoryCacheStore {
 
     entries.splice(index, 1)
 
+    if (entries.length === 0) {
+      pathValues.delete(key.method)
+    }
+
+    if (pathValues.size === 0) {
+      originValues.delete(key.path)
+    }
+
+    if (originValues.size === 0) {
+      this.#entries.delete(key.origin)
+    }
+
     this.#size -= entry.size
     this.#count -= 1
 
