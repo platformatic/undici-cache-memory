@@ -176,6 +176,12 @@ class MemoryCacheStore {
   }
 
   #saveEntry (key, entry) {
+    const existingEntry = this.get(key)
+    
+    if (existingEntry) {
+      this.#deleteByKey(key)
+    }
+
     let originValues = this.#entries.get(key.origin)
     if (!originValues) {
       originValues = new Map()
@@ -193,20 +199,6 @@ class MemoryCacheStore {
       entries = []
       pathValues.set(key.method, entries)
     }
-
-    const existingEntry = entries.findIndex((entry) => (
-      (entry.vary == null || Object.keys(entry.vary).every(headerName => {
-        if (entry.vary[headerName] === null) {
-          return key.headers[headerName] === undefined
-        }
-
-        return entry.vary[headerName] === key.headers[headerName]
-      }))
-    ))
-    if (existingEntry >= 0) {
-      entries.splice(existingEntry, 1, entry)
-      return
-    } 
 
     entries.push(entry)
 
