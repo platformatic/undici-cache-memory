@@ -10,7 +10,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@sinonjs/fake-timers": "^14.0.0",
-    "borp": "^0.18.0",
+    "borp": "^0.20.0",
     "undici": "^7.1.0"
   }
 }
