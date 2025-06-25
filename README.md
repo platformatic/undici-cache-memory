@@ -42,13 +42,13 @@ The `MemoryCacheStore` constructor accepts an options object with the following 
 
 ```js
 const store = new MemoryCacheStore({
-  // Maximum number of entries to store (default: Infinity)
+  // Maximum number of entries to store (default: 1024)
   maxCount: 1000,
   
-  // Maximum total size in bytes (default: Infinity)
+  // Maximum total size in bytes (default: 100MB)
   maxSize: 1024 * 1024 * 10, // 10MB
   
-  // Maximum size of a single entry in bytes (default: Infinity)
+  // Maximum size of a single entry in bytes (default: 5MB)
   maxEntrySize: 1024 * 1024, // 1MB
   
   // Header name to parse for cache tags (default: undefined)

@@ -26,9 +26,9 @@ IN THE SOFTWARE.
 const { Writable } = require('node:stream')
 
 class MemoryCacheStore {
-  #maxCount = Infinity
-  #maxSize = Infinity
-  #maxEntrySize = Infinity
+  #maxCount = 1024
+  #maxSize = 100 * 1024 * 1024 // 100MB
+  #maxEntrySize = 5 * 1024 * 1024 // 5MB
   #cacheTagsHeader = undefined
 
   #size = 0
@@ -122,6 +122,7 @@ class MemoryCacheStore {
 
     const store = this
     const entry = { ...key, ...val, cacheTags, body: [], size: 0 }
+    let sizeExceeded = false
 
     return new Writable({
       write (chunk, encoding, callback) {
@@ -132,6 +133,7 @@ class MemoryCacheStore {
         entry.size += chunk.byteLength
 
         if (entry.size >= store.#maxEntrySize) {
+          sizeExceeded = true
           this.destroy()
         } else {
           entry.body.push(chunk)
@@ -140,7 +142,9 @@ class MemoryCacheStore {
         callback(null)
       },
       final (callback) {
-        store.#saveEntry(key, entry)
+        if (!sizeExceeded) {
+          store.#saveEntry(key, entry)
+        }
         callback(null)
       }
     })
