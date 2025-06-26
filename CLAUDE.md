@@ -15,7 +15,12 @@ To run all tests:
 npm test
 ```
 
-The project uses [borp](https://github.com/mcollina/borp) for testing, which is a minimal test runner for Node.js.
+To run a specific test file:
+```
+npx borp test/memory-cache-store.test.js
+```
+
+The project uses [borp](https://github.com/mcollina/borp) for testing, which is a minimal test runner for Node.js that uses Node.js's built-in test runner.
 
 ## Architecture
 
@@ -33,18 +38,24 @@ The main component of this library is the `MemoryCacheStore` class in `index.js`
 2. **Cache Tags**: The store supports invalidating cached entries by tags, which are extracted from a configurable response header.
 
 3. **Memory Management**: The store automatically manages memory usage by:
-   - Limiting total entries with `maxCount`
-   - Limiting total size with `maxSize`
-   - Limiting individual entry size with `maxEntrySize`
+   - Limiting total entries with `maxCount` (default: 1024)
+   - Limiting total size with `maxSize` (default: 100MB)
+   - Limiting individual entry size with `maxEntrySize` (default: 5MB)
    - Implementing automatic cleanup by deleting half of entries when limits are exceeded
 
 ## Testing
 
 The test suite includes:
-- Unit tests for the MemoryCacheStore implementation
-- Integration tests with undici's cache interceptor
+- Unit tests for the MemoryCacheStore implementation (`memory-cache-store.test.js`)
+- Integration tests with undici's cache interceptor (`interceptor.test.js`)
 - Tests for cache invalidation mechanisms
-- Tests for stale-while-revalidate and stale-if-error behavior
+- Tests for stale-while-revalidate and stale-if-error behavior (`stale.test.js`)
+
+### Test Structure
+
+- `cache-store-test-utils.js`: Contains reusable test utilities and shared test cases that validate cache store interface compliance
+- Tests use Node.js built-in test runner via borp
+- Common pattern: tests import and run `cacheStoreTests()` from test utils to ensure interface compliance
 
 ## Key Features
 
