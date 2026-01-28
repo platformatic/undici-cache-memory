@@ -1,6 +1,6 @@
 {
   "name": "@platformatic/undici-cache-memory",
-  "version": "0.8.4",
+  "version": "0.9.0",
   "description": "Memory cache store for the undici cache interceptor",
   "main": "index.js",
   "scripts": {
