@@ -131,3 +131,6 @@ dist
 
 # Local claude settings
 .claude
+
+# Pi metadata
+.pi

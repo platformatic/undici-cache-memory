@@ -6,6 +6,17 @@ const MemoryCacheStore = require('..')
 const { createServer } = require('node:http')
 const { Client, interceptors } = require('undici')
 
+async function waitFor (predicate, { timeoutMs = 1000, intervalMs = 25 } = {}) {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start >= timeoutMs) {
+      return false
+    }
+    await sleep(intervalMs)
+  }
+  return true
+}
+
 for (const maxAgeHeader of ['s-maxage', 'max-age']) {
   test(`stale-while-revalidate w/ ${maxAgeHeader}`, async (t) => {
     const store = new MemoryCacheStore()
@@ -21,7 +32,7 @@ for (const maxAgeHeader of ['s-maxage', 'max-age']) {
         res.end()
       } else {
         requestsToOrigin++
-        res.setHeader('cache-control', 'public, max-age=1, stale-while-revalidate=4')
+        res.setHeader('cache-control', `public, ${maxAgeHeader}=1, stale-while-revalidate=4`)
         res.setHeader('etag', '"asd"')
         res.end('asd')
       }
@@ -70,6 +81,10 @@ for (const maxAgeHeader of ['s-maxage', 'max-age']) {
         method: 'GET'
       })
       t.assert.equal(requestsToOrigin, 1)
+      t.assert.ok(
+        await waitFor(() => revalidationRequests === 1),
+        'revalidation request did not reach the origin'
+      )
       t.assert.strictEqual(revalidationRequests, 1)
       t.assert.equal(response.statusCode, 200)
       t.assert.equal(await response.body.text(), 'asd')
