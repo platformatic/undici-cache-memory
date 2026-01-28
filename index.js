@@ -357,11 +357,40 @@ class MemoryCacheStore {
 }
 
 function findEntry (key, entries, now) {
-  const entry = entries.find((entry) => (
-    entry.deleteAt > now &&
-    (entry.vary == null || Object.keys(entry.vary).every(headerName => entry.vary[headerName] === key.headers?.[headerName]))
-  ))
-  return entry
+  for (let entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+    const entry = entries[entryIndex]
+    if (entry.deleteAt <= now) {
+      continue
+    }
+
+    if (entry.vary == null) {
+      return entry
+    }
+
+    const varyHeaders = Object.keys(entry.vary)
+    let matches = true
+    for (let headerIndex = 0; headerIndex < varyHeaders.length; headerIndex++) {
+      const headerName = varyHeaders[headerIndex]
+      const expected = entry.vary[headerName]
+      const actual = key.headers?.[headerName]
+
+      if (expected === null) {
+        if (actual !== undefined) {
+          matches = false
+          break
+        }
+      } else if (expected !== actual) {
+        matches = false
+        break
+      }
+    }
+
+    if (matches) {
+      return entry
+    }
+  }
+
+  return undefined
 }
 
 
